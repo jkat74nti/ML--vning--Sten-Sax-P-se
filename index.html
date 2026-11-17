@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sten Sax Påse – AI Edition</title>
+  
+  <!-- TensorFlow.js och Teachable Machine -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.7.4/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.4/dist/teachablemachine-image.min.js"></script>
+  
+  <!-- Lucide Icons CDN (används för UI-ikoner) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #161f30;
+      --border: #24344d;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.35);
+      --text: #f8fafc;
+      --win: #10b981;
+      --loss: #f43f5e;
+      --draw: #f59e0b;
+      --sten: #38bdf8;
+      --sax: #f43f5e;
+      --pase: #10b981;
+      --bakgrund: #64748b;
+      --step-one: #a78bfa;                          /* färg på knapp 1: Välj modellfilerna */
+      --step-one-glow: rgba(167, 139, 250, 0.45);
+    }
+
+    * { box-sizing: border-box; font-family: 'Segoe UI', -apple-system, system-ui, sans-serif; }
+    body {
+      margin: 0;
+      padding: 24px 16px;
+      background: radial-gradient(circle at top, #7b9fd8 0%, var(--bg) 100%);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    h1 {
+      margin: 0 0 4px 0;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    p.sub { color: #94a3b8; margin: 0 0 24px 0; font-size: 0.95rem; }
+
+    #setup-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 24px;
+      border-radius: 16px;
+      margin-bottom: 25px;
+      width: 100%;
+      max-width: 650px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .input-group { margin-bottom: 15px; }
+    label { display: block; font-size: 0.9rem; margin-bottom: 6px; color: #cbd5e1; }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0b0f19;
+      color: white;
+    }
+
+    /* Den riktiga filväljaren göms men finns kvar för tangentbord/skärmläsare */
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #0b0f19;
+      border: none;
+      font-weight: 700;
+      padding: 12px 20px;
+      font-size: 1rem;
+      border-radius: 10px;
+      cursor: pointer;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .btn-primary:hover {
+      box-shadow: 0 0 18px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+    .btn-primary svg { width: 20px; height: 20px; }
+
+    /* Steg 1-knappen (filväljaren) har egen färg */
+    .file-btn {
+      position: relative;
+      margin-bottom: 0;
+      text-align: center;
+      user-select: none;
+      background: var(--step-one);
+    }
+    .file-btn:hover {
+      box-shadow: 0 0 18px var(--step-one-glow);
+      transform: translateY(-1px);
+    }
+    .file-btn:focus-within {
+      box-shadow: 0 0 0 3px var(--step-one-glow), 0 0 18px var(--step-one-glow);
+      transform: translateY(-1px);
+    }
+
+    #log-box {
+      margin-top: 15px;
+      background: #060911;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: #93c5fd;
+    }
+    .log-err { color: #fb7185 !important; font-weight: bold; }
+    .log-warn { color: #fde047 !important; }
+    .log-ok { color: #4ade80 !important; }
+
+    .scoreboard {
+      display: flex;
+      gap: 30px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 10px 28px;
+      border-radius: 999px;
+      margin-bottom: 20px;
+      font-size: 1.15rem;
+      font-weight: bold;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .score-item { display: flex; align-items: center; gap: 8px; }
+
+    .game-area {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      justify-content: center;
+      max-width: 900px;
+      width: 100%;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 20px;
+      flex: 1;
+      min-width: 320px;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      position: relative;
+    }
+
+    .card h2 {
+      margin: 0 0 15px 0;
+      font-size: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #cbd5e1;
+    }
+
+    .viewport {
+      width: 280px;
+      height: 280px;
+      border-radius: 16px;
+      background: #090d16;
+      border: 2px solid var(--border);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .viewport canvas {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover;
+    }
+
+    /* TYDLIG IDENTIFIERINGSPANEL */
+    .detection-banner {
+      margin-top: 14px;
+      width: 100%;
+      background: #090e1a;
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      transition: all 0.25s ease;
+    }
+
+    .player-icon-box {
+      width: 58px;
+      height: 58px;
+      border-radius: 12px;
+      background: #111827;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      transition: all 0.25s ease;
+    }
+    .player-icon-box svg {
+      width: 36px;
+      height: 36px;
+      stroke-width: 2;
+    }
+
+    .detection-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .detection-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+    }
+    .detection-name {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #f8fafc;
+      margin-bottom: 4px;
+    }
+
+    .confidence-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .confidence-bar-bg {
+      flex: 1;
+      height: 6px;
+      background: #1e293b;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .confidence-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 3px;
+      transition: width 0.15s ease, background-color 0.25s ease;
+    }
+
+    /* Datorns display */
+    .comp-icon-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      transition: all 0.25s ease;
+    }
+    .comp-icon-box svg {
+      width: 90px;
+      height: 90px;
+      stroke-width: 1.8;
+    }
+
+    /* Status och Nedräkning */
+    #status-badge {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin: 20px 0 10px 0;
+      min-height: 48px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    #action-btn {
+      margin-top: 18px;
+      background: var(--win);
+      color: #022c22;
+      font-size: 1.2rem;
+      padding: 14px 40px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+      transition: all 0.2s ease;
+    }
+    #action-btn:hover:not(:disabled) {
+      transform: scale(1.03);
+      box-shadow: 0 6px 25px rgba(16, 185, 129, 0.5);
+    }
+    #action-btn:disabled {
+      background: #334155;
+      color: #64748b;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    /* Animationer */
+    @keyframes pulse-spin {
+      0% { transform: scale(0.92) rotate(0deg); opacity: 0.6; }
+      50% { transform: scale(1.08) rotate(180deg); opacity: 1; filter: drop-shadow(0 0 15px var(--accent)); }
+      100% { transform: scale(0.92) rotate(360deg); opacity: 0.6; }
+    }
+    .thinking-anim {
+      animation: pulse-spin 1.5s infinite ease-in-out;
+      color: #38bdf8 !important;
+    }
+
+    @keyframes popIn {
+      0% { transform: scale(0.5); opacity: 0; }
+      80% { transform: scale(1.15); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .reveal-anim {
+      animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+  </style>
+</head>
+<body>
+
+  <h1><i data-lucide="bot"></i> Sten, Sax, Påse med AI</h1>
+  <p class="sub">Avläsning och slumpning i realtid</p>
+
+  <!-- Laddningssektion -->
+  <div id="setup-panel">
+    <div class="input-group">
+      <label><b>Välj de 3 lokala filerna samtidigt</b> (<code>model.json</code>, <code>metadata.json</code>, <code>weights.bin</code>):</label>
+      <label class="btn-primary file-btn" for="file-input">
+        <i data-lucide="folder-open"></i>
+        <span id="file-btn-text">1. Välj modellfilerna</span>
+        <input type="file" id="file-input" class="visually-hidden" multiple accept=".json,.bin" onchange="checkSelectedFiles()" />
+      </label>
+    </div>
+
+    <div id="log-box">Statuslogg: Redo...</div>
+
+    <button class="btn-primary" id="load-model-btn" onclick="initModel()" style="margin-top: 15px;">
+      <i data-lucide="play-circle"></i> 2. Starta kamera & Ladda modell
+    </button>
+  </div>
+
+  <!-- Poängtavla -->
+  <div class="scoreboard" id="scoreboard" style="display: none;">
+    <div class="score-item"><i data-lucide="user"></i> Du: <span id="player-score">0</span></div>
+    <div style="color: var(--border);">|</div>
+    <div class="score-item"><i data-lucide="cpu"></i> Dator: <span id="comp-score">0</span></div>
+  </div>
+
+  <div id="status-badge"></div>
+
+  <!-- Spelplan -->
+  <div class="game-area" id="game-area" style="display: none;">
+    
+    <!-- Spelarkort -->
+    <div class="card">
+      <h2><i data-lucide="camera"></i> Din Hand</h2>
+      <div class="viewport" id="webcam-container"></div>
+      
+      <!-- STOR LIVE-IDENTIFIERINGSPANEL -->
+      <div class="detection-banner" id="player-detection-banner">
+        <div class="player-icon-box" id="player-icon-box"></div>
+        <div class="detection-info">
+          <div class="detection-title">Modellen känner av:</div>
+          <div class="detection-name" id="current-detection">Söker hand...</div>
+          <div class="confidence-wrapper">
+            <div class="confidence-bar-bg">
+              <div class="confidence-bar-fill" id="confidence-bar"></div>
+            </div>
+            <span id="current-confidence">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Datorkort -->
+    <div class="card">
+      <h2><i data-lucide="bot"></i> Datorns Hand</h2>
+      <div class="viewport" id="comp-viewport">
+        <div class="comp-icon-box" id="comp-icon-box"></div>
+      </div>
+      
+      <div class="detection-banner">
+        <div class="player-icon-box" id="comp-status-icon-box"></div>
+        <div class="detection-info">
+          <div class="detection-title">Datorns status:</div>
+          <div class="detection-name" id="comp-hand-text">Väntar på start</div>
+          <div style="font-size: 0.8rem; color: #64748b;">Slumpas vid nedräkning</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button id="action-btn" style="display: none;" onclick="startRound()">
+    <i data-lucide="swords"></i> Spela en runda!
+  </button>
+
+  <script>
+    /* =========================================================================
+       ⚙️  KLASSNAMN – ÄNDRA HÄR!
+       =========================================================================
+       Namnen måste skrivas EXAKT som klasserna heter i din
+       Teachable Machine-modell (metadata.json -> "labels").
+
+       De används automatiskt av hela programmet:
+         • klasskontrollen i statusloggen (4 klasser + namnkontroll)
+         • datorns slumpval och vinstreglerna
+         • ikoner och texter i gränssnittet
+       ========================================================================= */
+    const GAME_CLASSES = ["Sten", "Sax", "Påse"];                 // spelbara händer
+    const BACKGROUND_CLASS = "Bakgrund";                          // ingen hand
+    const EXPECTED_CLASSES = [...GAME_CLASSES, BACKGROUND_CLASS]; // alla 4, i modellens ordning
+
+    // Vinstregel: varje klass slår nästa klass i listan (sista slår första).
+    // Sten slår Sax, Sax slår Påse, Påse slår Sten.
+    const BEATS = {};
+    GAME_CLASSES.forEach((namn, i) => {
+      BEATS[namn] = GAME_CLASSES[(i + 1) % GAME_CLASSES.length];
+    });
+
+    /* =========================================================================
+       1. LJUD-SYNTHESIZER (Web Audio API)
+       ========================================================================= */
+    let audioCtx = null;
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    function playTone(freq, type = 'sine', duration = 0.1, gainVal = 0.15) {
+      try {
+        const ctx = getAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(gainVal, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + duration);
+      } catch (e) { console.error(e); }
+    }
+
+    const sound = {
+      countdownTick: () => playTone(600, 'triangle', 0.1, 0.15),
+      countdownGo: () => playTone(900, 'square', 0.22, 0.2),
+      startThinking: (durationMs = 1500) => {
+        let elapsed = 0;
+        const interval = setInterval(() => {
+          if (elapsed >= durationMs) {
+            clearInterval(interval);
+            return;
+          }
+          const randomPitch = 380 + Math.random() * 500;
+          playTone(randomPitch, 'sine', 0.06, 0.08);
+          elapsed += 100;
+        }, 100);
+      },
+      reveal: () => {
+        playTone(500, 'sawtooth', 0.08, 0.15);
+        setTimeout(() => playTone(750, 'sawtooth', 0.18, 0.2), 60);
+      },
+      win: () => {
+        setTimeout(() => playTone(523.25, 'triangle', 0.15, 0.2), 0);
+        setTimeout(() => playTone(659.25, 'triangle', 0.15, 0.2), 120);
+        setTimeout(() => playTone(783.99, 'triangle', 0.25, 0.25), 240);
+      },
+      loss: () => {
+        setTimeout(() => playTone(400, 'sawtooth', 0.15, 0.2), 0);
+        setTimeout(() => playTone(300, 'sawtooth', 0.2, 0.2), 140);
+        setTimeout(() => playTone(200, 'sawtooth', 0.35, 0.25), 280);
+      },
+      draw: () => {
+        playTone(440, 'sine', 0.2, 0.15);
+        setTimeout(() => playTone(440, 'sine', 0.3, 0.15), 180);
+      }
+    };
+
+    /* =========================================================================
+       2. SVG-GESTIKONER (Fristående utan Lucide-konflikt)
+       Nycklarna för de 4 modellklasserna hämtas från klassnamnen i toppen,
+       så att de bara behöver ändras på ett ställe.
+       ========================================================================= */
+    const classConfig = {
+      [GAME_CLASSES[0]]: {
+        label: GAME_CLASSES[0],
+        color: "var(--sten)",
+        svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`
+      },
+      [GAME_CLASSES[1]]: {
+        label: GAME_CLASSES[1],
+        color: "var(--sax)",
+        svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></svg>`
+      },
+      [GAME_CLASSES[2]]: {
+        label: GAME_CLASSES[2],
+        color: "var(--pase)",
+        svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v5"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v5"/><path d="M10 10.5V3a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M6 13V8a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7a8 8 0 0 0 8 8h2a8 8 0 0 0 8-8v-2a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/></svg>`
+      },
+      [BACKGROUND_CLASS]: {
+        label: "Ingen hand",
+        color: "var(--bakgrund)",
+        svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg>`
+      },
+      "Thinking": {
+        label: "Tänker...",
+        color: "#38bdf8",
+        svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>`
+      },
+      "Ready": {
+        label: "Redo",
+        color: "#64748b",
+        svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+      }
+    };
+
+    function renderHandIcon(containerId, config, extraClass = "") {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = config.svg;
+      const svg = el.querySelector('svg');
+      if (svg) {
+        if (extraClass) svg.classList.add(extraClass);
+        svg.style.color = config.color;
+      }
+    }
+
+    /* =========================================================================
+       3. LOGG & MODELL-HANTERING
+       ========================================================================= */
+    function log(msg, type = "info") {
+      const box = document.getElementById("log-box");
+      const timestamp = new Date().toLocaleTimeString();
+      let colorClass = "";
+      if (type === "err") colorClass = "log-err";
+      else if (type === "warn") colorClass = "log-warn";
+      else if (type === "ok") colorClass = "log-ok";
+
+      box.innerHTML += `\n<span class="${colorClass}">[${timestamp}] ${msg}</span>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById("log-box").innerHTML = "Statuslogg: Redo...";
+    }
+
+    // Läser en File som text (FileReader fungerar även på file://)
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error(`Kunde inte läsa ${file.name}`));
+        reader.readAsText(file);
+      });
+    }
+
+    async function checkSelectedFiles() {
+      const files = Array.from(document.getElementById("file-input").files);
+      const names = files.map(f => f.name);
+
+      // Uppdatera texten på filknappen
+      const fileBtnText = document.getElementById("file-btn-text");
+      if (fileBtnText) {
+        fileBtnText.innerText = files.length > 0
+          ? `1. Byt filer (${files.length} valda)`
+          : "1. Välj modellfilerna";
+      }
+
+      clearLog();
+      if (files.length === 0) {
+        log("Inga filer valda än.");
+        return;
+      }
+
+      const hasModel = names.includes("model.json");
+      const hasMeta = names.includes("metadata.json");
+      const hasWeights = names.includes("weights.bin");
+
+      // Läs klasserna ur metadata.json och kontrollera dem mot koden
+      let labels = [];
+      let metaError = "";
+      if (hasMeta) {
+        const metadataFile = files.find(f => f.name === "metadata.json");
+        try {
+          const meta = JSON.parse(await readFileAsText(metadataFile));
+          labels = Array.isArray(meta.labels) ? meta.labels : [];
+        } catch (err) {
+          metaError = err.message;
+        }
+      }
+
+      const missing = EXPECTED_CLASSES.filter(c => !labels.includes(c));
+      const unknown = labels.filter(c => !EXPECTED_CLASSES.includes(c));
+      const classesOk = labels.length === EXPECTED_CLASSES.length &&
+                        missing.length === 0 &&
+                        unknown.length === 0;
+      const filesOk = hasModel && hasMeta && hasWeights;
+
+      // ALLT skrivs i statusloggen
+      const lines = [
+        `Valda filer (${files.length} st):`,
+        `• model.json: ${hasModel ? "✅ Hittad" : "❌ Saknas"}`,
+        `• metadata.json: ${hasMeta ? "✅ Hittad" : "❌ Saknas"}`,
+        `• weights.bin: ${hasWeights ? "✅ Hittad" : "❌ Saknas"}`
+      ];
+      if (metaError) {
+        lines.push("• Klasser: kunde inte läsas ❌");
+      } else if (hasMeta) {
+        lines.push(`• Klasser: ${labels.length} st ${classesOk ? "✅" : "❌"} (${labels.join(", ") || "?"})`);
+      }
+      log(lines.join("\n"), filesOk && classesOk ? "ok" : "warn");
+
+      // Förklaring om något inte stämmer
+      if (metaError) log(`Kunde inte läsa metadata.json: ${metaError}`, "err");
+      if (hasMeta && !metaError) {
+        if (!labels.length) log("metadata.json saknar klasser (labels).", "err");
+        if (missing.length) log(`Saknas i modellen: ${missing.join(", ")} ❌`, "err");
+        if (unknown.length) log(`Okända klasser i modellen: ${unknown.join(", ")} ⚠️`, "warn");
+        if (classesOk) log(`Antal klasser (${labels.length}) och namnen stämmer med koden ✅`, "ok");
+      }
+    }
+
+    /* =========================================================================
+       3b. KLASSKONTROLL AV MODELLEN (rapporteras i loggen)
+       Kontrollerar tre saker:
+         1. Hittas 4 klasser?
+         2. Vad heter klasserna?
+         3. Stämmer namnen med klasserna som koden använder?
+       (Vid filvalet görs samma kontroll direkt mot metadata.json i
+       checkSelectedFiles. Här körs den mot den färdigladdade modellen.)
+       Resultatet skrivs i statusloggen (stoppar inte spelet).
+       ========================================================================= */
+    function reportClassCheck(count, labels, source) {
+      log(`──────── KLASSKONTROLL (${source}) ────────`);
+
+      // 1. Antal klasser
+      const countOk = count === EXPECTED_CLASSES.length;
+      if (countOk) {
+        log(`1. Klasser hittade: ${count} ✅ (förväntat: ${EXPECTED_CLASSES.length})`, "ok");
+      } else {
+        log(`1. Klasser hittade: ${count} ❌ (förväntat: ${EXPECTED_CLASSES.length})`, "err");
+      }
+
+      // 2. Klassernas namn
+      if (labels.length > 0) {
+        log(`2. Klassnamn: ${labels.join(", ")}`, "ok");
+      } else {
+        log("2. Klassnamn: kunde inte läsas ⚠️", "warn");
+      }
+
+      // 3. Stämmer namnen med koden?
+      const missing = EXPECTED_CLASSES.filter(c => !labels.includes(c));
+      const unknown = labels.filter(c => !EXPECTED_CLASSES.includes(c));
+      const sameOrder = labels.length === EXPECTED_CLASSES.length &&
+                        labels.every((l, i) => l === EXPECTED_CLASSES[i]);
+
+      if (labels.length > 0 && !missing.length && !unknown.length) {
+        log(
+          "3. Namnen stämmer med koden ✅" +
+          (sameOrder ? " (samma ordning)" : " (annan ordning – påverkar inte spelet)"),
+          "ok"
+        );
+      } else {
+        if (missing.length) log(`3. Saknas i modellen: ${missing.join(", ")} ❌`, "err");
+        if (unknown.length) log(`3. Okända klasser i modellen: ${unknown.join(", ")} ⚠️`, "warn");
+        if (!labels.length) log("3. Namnen kunde inte kontrolleras ⚠️", "warn");
+      }
+
+      const ok = countOk && labels.length > 0 && missing.length === 0 && unknown.length === 0;
+
+      if (ok) {
+        log(`SAMMANFATTNING: ${count} klasser hittade och namnen stämmer med koden ✅`, "ok");
+      } else {
+        log("SAMMANFATTNING: Klasserna matchar INTE koden – spelet kan ge fel resultat ❌", "err");
+      }
+
+      log("────────────────────────────────");
+
+      return { count, labels, ok };
+    }
+
+    // Kontroll mot den färdigladdade modellen
+    function validateModelClasses(model) {
+      const labels = (typeof model.getClassLabels === "function")
+        ? model.getClassLabels()
+        : [];
+      return reportClassCheck(model.getTotalClasses(), labels, "modellfilerna");
+    }
+
+    let model, webcam, maxPredictions;
+    let playerScore = 0;
+    let compScore = 0;
+    let isPlayingRound = false;
+
+    async function initModel() {
+      getAudioContext();
+      const btn = document.getElementById("load-model-btn");
+      const files = Array.from(document.getElementById("file-input").files);
+
+      btn.disabled = true;
+      clearLog();
+      log("Startar laddning...");
+
+      try {
+        if (files.length > 0) {
+          const modelFile = files.find(f => f.name === "model.json");
+          const weightsFile = files.find(f => f.name === "weights.bin");
+          const metadataFile = files.find(f => f.name === "metadata.json");
+
+          if (!modelFile || !weightsFile || !metadataFile) {
+            throw new Error("Du måste välja alla tre filer: model.json, weights.bin och metadata.json.");
+          }
+
+          log("Läser in lokala modellfiler...");
+          model = await tmImage.loadFromFiles(modelFile, weightsFile, metadataFile);
+          log("Modell inläst framgångsrikt!", "ok");
+        } else {
+          throw new Error("Välj dina 3 lokala filer: model.json, weights.bin och metadata.json.");
+        }
+
+        maxPredictions = model.getTotalClasses();
+
+        // Extra check: antal klasser, deras namn och att de matchar koden.
+        // Resultatet skrivs ut i statusloggen (stoppar inte spelet).
+        const classCheck = validateModelClasses(model);
+        if (!classCheck.ok) {
+          log("Varning: kontrollera modellens klasser mot koden i index.html.", "warn");
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("Webbläsaren ger inte tillgång till kameran på fil://. Kör via en lokal server eller Firefox.");
+        }
+
+        log("Startar webbkameran...");
+        webcam = new tmImage.Webcam(280, 280, true);
+        await webcam.setup();
+        await webcam.play();
+        log("Webbkameran är igång!", "ok");
+
+        window.requestAnimationFrame(gameLoop);
+
+        document.getElementById("setup-panel").style.display = "none";
+        document.getElementById("scoreboard").style.display = "flex";
+        document.getElementById("game-area").style.display = "flex";
+        document.getElementById("action-btn").style.display = "flex";
+        document.getElementById("webcam-container").appendChild(webcam.canvas);
+        document.getElementById("status-badge").innerText = "Tryck på 'Spela en runda!' för att starta";
+        
+        renderHandIcon("player-icon-box", classConfig[BACKGROUND_CLASS]);
+        renderHandIcon("comp-icon-box", classConfig["Ready"]);
+        renderHandIcon("comp-status-icon-box", classConfig["Ready"]);
+
+      } catch (err) {
+        log(`FEL: ${err.message}`, "err");
+        btn.disabled = false;
+        alert("Ett fel inträffade:\n" + err.message);
+      }
+    }
+
+    /* =========================================================================
+       4. BILDANALYS MED DIREKT SVG-UPPDATERING
+       ========================================================================= */
+    let latestTopPrediction = { className: BACKGROUND_CLASS, probability: 0 };
+    let lastRenderedPlayerClass = ""; 
+
+    async function gameLoop() {
+      webcam.update();
+      await predict();
+      window.requestAnimationFrame(gameLoop);
+    }
+
+    async function predict() {
+      const predictions = await model.predict(webcam.canvas);
+      let highestProb = 0;
+      let bestMatch = predictions[0];
+
+      for (let i = 0; i < maxPredictions; i++) {
+        if (predictions[i].probability > highestProb) {
+          highestProb = predictions[i].probability;
+          bestMatch = predictions[i];
+        }
+      }
+
+      latestTopPrediction = bestMatch;
+      const conf = Math.round(bestMatch.probability * 100);
+
+      document.getElementById("current-confidence").innerText = `${conf}%`;
+      const bar = document.getElementById("confidence-bar");
+      bar.style.width = `${conf}%`;
+
+      if (bestMatch.className !== lastRenderedPlayerClass) {
+        lastRenderedPlayerClass = bestMatch.className;
+        const config = classConfig[bestMatch.className] || classConfig[BACKGROUND_CLASS];
+
+        renderHandIcon("player-icon-box", config);
+        
+        const labelEl = document.getElementById("current-detection");
+        labelEl.innerText = config.label;
+        labelEl.style.color = config.color;
+
+        bar.style.backgroundColor = config.color;
+        
+        const banner = document.getElementById("player-detection-banner");
+        banner.style.borderColor = config.color;
+        banner.style.boxShadow = `0 0 16px ${config.color}22`;
+      }
+    }
+
+    /* =========================================================================
+       5. SPELOMGÅNG: NEDRÄKNING -> 1.5S TÄNKANDE -> AVSLÖJANDE
+       ========================================================================= */
+    async function startRound() {
+      if (isPlayingRound) return;
+      isPlayingRound = true;
+
+      const actionBtn = document.getElementById("action-btn");
+      const statusBadge = document.getElementById("status-badge");
+      const compHandText = document.getElementById("comp-hand-text");
+
+      actionBtn.disabled = true;
+      renderHandIcon("comp-icon-box", classConfig["Ready"]);
+      renderHandIcon("comp-status-icon-box", classConfig["Ready"]);
+      compHandText.innerText = "Gör dig redo...";
+
+      // FAS 1: Nedräkning
+      const countdown = ["Sten...", "Sax...", "Påse...", "VISA!"];
+      for (let i = 0; i < countdown.length; i++) {
+        statusBadge.innerHTML = `<span>${countdown[i]}</span>`;
+        statusBadge.style.color = "var(--text)";
+        
+        if (i === countdown.length - 1) {
+          sound.countdownGo();
+        } else {
+          sound.countdownTick();
+        }
+        await new Promise(r => setTimeout(r, 700));
+      }
+
+      // Spelarens val fångas vid "VISA!"
+      await new Promise(r => setTimeout(r, 200));
+      const playerChoice = latestTopPrediction.className;
+
+      // FAS 2: Datorn tänker i 1.5 sekunder
+      statusBadge.innerHTML = `<span>Datorn analyserar...</span>`;
+      statusBadge.style.color = "var(--accent)";
+      compHandText.innerText = "Datorn tänker...";
+      
+      renderHandIcon("comp-icon-box", classConfig["Thinking"], "thinking-anim");
+      renderHandIcon("comp-status-icon-box", classConfig["Thinking"], "thinking-anim");
+      
+      sound.startThinking(1500);
+      await new Promise(r => setTimeout(r, 1500));
+
+      // FAS 3: Datorn slumpar och avslöjar
+      const validOptions = GAME_CLASSES;
+      const computerChoice = validOptions[Math.floor(Math.random() * validOptions.length)];
+      const compConfig = classConfig[computerChoice];
+
+      renderHandIcon("comp-icon-box", compConfig, "reveal-anim");
+      renderHandIcon("comp-status-icon-box", compConfig, "reveal-anim");
+      compHandText.innerText = compConfig.label;
+      compHandText.style.color = compConfig.color;
+      sound.reveal();
+
+      // Avgör vinnare
+      evaluateResult(playerChoice, computerChoice);
+
+      actionBtn.disabled = false;
+      isPlayingRound = false;
+    }
+
+    function evaluateResult(player, computer) {
+      const statusBadge = document.getElementById("status-badge");
+
+      if (player === BACKGROUND_CLASS || !GAME_CLASSES.includes(player)) {
+        statusBadge.innerHTML = `⚠️ Ingen hand upptäckt! Försök igen.`;
+        statusBadge.style.color = "var(--draw)";
+        sound.draw();
+        return;
+      }
+
+      if (player === computer) {
+        statusBadge.innerHTML = `🤝 Oavgjort! Båda valde ${player}.`;
+        statusBadge.style.color = "var(--draw)";
+        sound.draw();
+      } else if (BEATS[player] === computer) {
+        playerScore++;
+        statusBadge.innerHTML = `🎉 Du vann! ${player} slår ${computer}!`;
+        statusBadge.style.color = "var(--win)";
+        sound.win();
+      } else {
+        compScore++;
+        statusBadge.innerHTML = `😢 Datorn vann! ${computer} slår ${player}.`;
+        statusBadge.style.color = "var(--loss)";
+        sound.loss();
+      }
+
+      document.getElementById("player-score").innerText = playerScore;
+      document.getElementById("comp-score").innerText = compScore;
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
